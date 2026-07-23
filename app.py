@@ -1,7 +1,11 @@
-"""Flask application for NLP Well Report Analyzer."""
+"""FastAPI application for NLP Well Report Analyzer."""
 
 import os
-from flask import Flask, request, jsonify, render_template
+from typing import Any, Dict
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from nlp_analyzer.models.report_classifier import ReportClassifier
 from nlp_analyzer.models.entity_extractor import EntityExtractor
@@ -10,7 +14,19 @@ from nlp_analyzer.utils.text_processor import (
     extract_keywords_tfidf, extract_entities, tokenize,
 )
 
-app = Flask(__name__)
+app = FastAPI(
+    title="NLP Well Report Analyzer",
+    description="NLP analysis of well reports for Oil & Gas",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 classifier = ReportClassifier()
 entity_extractor = EntityExtractor()
@@ -23,32 +39,51 @@ def _load_models():
     sentiment_analyzer.load()
 
 
-_load_models()
+class TextRequest(BaseModel):
+    text: str
 
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+class AnalyzeResponse(BaseModel):
+    classification: Dict[str, Any]
+    entities: Any
+    sentiment: Any
+    keywords: list
+    text_length: int
+    token_count: int
 
 
-@app.route("/api/health", methods=["GET"])
-def health():
-    return jsonify({
+class ExtractResponse(BaseModel):
+    entities: Any
+    keywords: list
+
+
+class ClassifyResponse(BaseModel):
+    classification: str
+    probabilities: Dict[str, float]
+
+
+@app.on_event("startup")
+async def startup_event():
+    _load_models()
+
+
+@app.get("/api/health")
+async def health():
+    return {
         "status": "healthy",
         "models_loaded": {
             "classifier": classifier.is_trained,
             "entity_extractor": entity_extractor.is_trained,
             "sentiment_analyzer": sentiment_analyzer.is_trained,
         },
-    })
+    }
 
 
-@app.route("/api/analyze", methods=["POST"])
-def analyze():
-    data = request.get_json(force=True, silent=True) or {}
-    text = data.get("text", "").strip()
+@app.post("/api/analyze", response_model=AnalyzeResponse)
+async def analyze(request: TextRequest):
+    text = request.text.strip()
     if not text:
-        return jsonify({"error": "No text provided"}), 400
+        raise HTTPException(status_code=400, detail="No text provided")
 
     classification = classifier.predict(text)
     classification_probs = classifier.predict_proba(text)
@@ -56,54 +91,46 @@ def analyze():
     sentiment = sentiment_analyzer.analyze(text)
     keywords = extract_keywords_tfidf(text, top_n=10)
 
-    return jsonify({
-        "classification": {
+    return AnalyzeResponse(
+        classification={
             "type": classification,
             "probabilities": classification_probs,
         },
-        "entities": entities,
-        "sentiment": sentiment,
-        "keywords": keywords,
-        "text_length": len(text),
-        "token_count": len(tokenize(text)),
-    })
+        entities=entities,
+        sentiment=sentiment,
+        keywords=keywords,
+        text_length=len(text),
+        token_count=len(tokenize(text)),
+    )
 
 
-@app.route("/api/extract", methods=["POST"])
-def extract():
-    data = request.get_json(force=True, silent=True) or {}
-    text = data.get("text", "").strip()
+@app.post("/api/extract", response_model=ExtractResponse)
+async def extract(request: TextRequest):
+    text = request.text.strip()
     if not text:
-        return jsonify({"error": "No text provided"}), 400
+        raise HTTPException(status_code=400, detail="No text provided")
 
     entities = entity_extractor.extract(text)
     keywords = extract_keywords_tfidf(text, top_n=15)
 
-    return jsonify({
-        "entities": entities,
-        "keywords": keywords,
-    })
+    return ExtractResponse(entities=entities, keywords=keywords)
 
 
-@app.route("/api/classify", methods=["POST"])
-def classify():
-    data = request.get_json(force=True, silent=True) or {}
-    text = data.get("text", "").strip()
+@app.post("/api/classify", response_model=ClassifyResponse)
+async def classify(request: TextRequest):
+    text = request.text.strip()
     if not text:
-        return jsonify({"error": "No text provided"}), 400
+        raise HTTPException(status_code=400, detail="No text provided")
 
     classification = classifier.predict(text)
     probabilities = classifier.predict_proba(text)
 
-    return jsonify({
-        "classification": classification,
-        "probabilities": probabilities,
-    })
+    return ClassifyResponse(classification=classification, probabilities=probabilities)
 
 
-@app.route("/api/models", methods=["GET"])
-def models():
-    return jsonify({
+@app.get("/api/models")
+async def models_info():
+    return {
         "classifier": {
             "loaded": classifier.is_trained,
             "types": ["drilling", "completion", "workover", "production"],
@@ -116,12 +143,12 @@ def models():
             "loaded": sentiment_analyzer.is_trained,
             "labels": ["positive", "negative", "neutral"],
         },
-    })
+    }
 
 
-@app.route("/api/docs")
-def api_docs():
-    return jsonify({
+@app.get("/api/docs")
+async def api_docs():
+    return {
         "openapi": "3.0.0",
         "info": {"title": "NLP Well Report Analyzer", "version": "1.0.0"},
         "paths": {
@@ -131,8 +158,9 @@ def api_docs():
             "/api/extract": {"post": {"summary": "Extract entities and keywords"}},
             "/api/classify": {"post": {"summary": "Classify report type"}},
         }
-    })
+    }
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5017, debug=True)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5017)

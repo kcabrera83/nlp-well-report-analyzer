@@ -1,35 +1,30 @@
-"""Test the API endpoints of the NLP Well Report Analyzer."""
+"""API tests for NLP Well Report Analyzer."""
 
 import sys
 import json
 import time
-import urllib.request
-import urllib.error
+from fastapi.testclient import TestClient
 
-BASE_URL = "http://127.0.0.1:5017"
+sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+
+from app import app
+
 PASS = 0
 FAIL = 0
+client = TestClient(app)
 
 
 def test(name, method, endpoint, data=None, expect_status=200):
     global PASS, FAIL
-    url = BASE_URL + endpoint
-    headers = {"Content-Type": "application/json"}
-    body = json.dumps(data).encode() if data else None
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    if method == "GET":
+        resp = client.get(endpoint)
+    elif method == "POST":
+        resp = client.post(endpoint, json=data)
+    else:
+        resp = client.get(endpoint)
 
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            status = resp.getcode()
-            result = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        status = e.code
-        body = e.read()
-        result = json.loads(body.decode()) if body else {}
-    except Exception as e:
-        FAIL += 1
-        print(f"  [FAIL] {name}: {e}")
-        return None
+    status = resp.status_code
+    result = resp.json()
 
     if status == expect_status:
         PASS += 1
@@ -87,7 +82,7 @@ def main():
 
     print("\n--- Error Handling ---")
     test("POST /api/analyze (empty)", "POST", "/api/analyze", {"text": ""}, expect_status=400)
-    test("POST /api/classify (no text)", "POST", "/api/classify", {}, expect_status=400)
+    test("POST /api/classify (no text)", "POST", "/api/classify", {}, expect_status=422)
 
     print("\n" + "=" * 60)
     total = PASS + FAIL
@@ -97,7 +92,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Waiting 2 seconds for server startup...")
-    time.sleep(2)
     success = main()
     sys.exit(0 if success else 1)
