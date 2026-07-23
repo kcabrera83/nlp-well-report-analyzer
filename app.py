@@ -119,5 +119,20 @@ def models():
     })
 
 
+@app.route("/api/docs")
+def api_docs():
+    return jsonify({
+        "openapi": "3.0.0",
+        "info": {"title": "NLP Well Report Analyzer", "version": "1.0.0"},
+        "paths": {
+            "/api/health": {"get": {"summary": "Health check"}},
+            "/api/models": {"get": {"summary": "Model info"}},
+            "/api/analyze": {"post": {"summary": "Full NLP analysis of well report text"}},
+            "/api/extract": {"post": {"summary": "Extract entities and keywords"}},
+            "/api/classify": {"post": {"summary": "Classify report type"}},
+        }
+    })
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5017, debug=True)
