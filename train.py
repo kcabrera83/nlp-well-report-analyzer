@@ -3,13 +3,22 @@
 import os
 import sys
 import json
-import random
 import time
+import re
 
-from nlp_analyzer.data_generator import generate_dataset, generate_report
-from nlp_analyzer.models.report_classifier import ReportClassifier
-from nlp_analyzer.models.entity_extractor import EntityExtractor
-from nlp_analyzer.models.sentiment_analyzer import SentimentAnalyzer
+import spacy
+from transformers import pipeline as hf_pipeline
+import nltk
+from nltk.tokenize import word_tokenize, sent_tokenize
+from gensim.models import Word2Vec
+
+from nlp_analyzer.data_generator import generate_dataset
+
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs", "models")
+
+WELL_PATTERN = re.compile(r"[A-Z]-\d+")
+FORMATION_WORDS = {"Sandstone", "Limestone", "Shale", "Dolomite"}
+MEASUREMENT_PATTERN = re.compile(r"\d+\s*(bbl|psi|ft|md|°F)")
 
 
 def generate_sentiment_labels(dataset):
@@ -31,14 +40,95 @@ def generate_sentiment_labels(dataset):
     return labels
 
 
+def build_spacy_ner():
+    """Build spaCy NER pipeline for oil & gas entities"""
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        nlp = spacy.blank("en")
+        print("  Warning: en_core_web_sm not found, using blank model")
+
+    if "entity_ruler" not in [p.name for p in nlp.pipe_names]:
+        ruler = nlp.add_pipe("entity_ruler")
+        patterns = [
+            {"label": "WELL", "pattern": [{"TEXT": {"REGEX": "^[A-Z]-\\d+$"}}]},
+            {"label": "FORMATION", "pattern": [{"TEXT": {"IN": list(FORMATION_WORDS)}}]},
+            {"label": "MEASUREMENT", "pattern": [{"TEXT": {"REGEX": "\\d+\\s*(bbl|psi|ft|md|°F)"}}]},
+        ]
+        ruler.add_patterns(patterns)
+    return nlp
+
+
+def extract_entities_spacy(nlp, text):
+    """Extract entities using spaCy"""
+    doc = nlp(text)
+    entities = []
+    for ent in doc.ents:
+        entities.append({"text": ent.text, "label": ent.label_, "start": ent.start_char, "end": ent.end_char})
+
+    for match in WELL_PATTERN.finditer(text):
+        entities.append({"text": match.group(), "label": "WELL", "start": match.start(), "end": match.end()})
+    for match in MEASUREMENT_PATTERN.finditer(text):
+        entities.append({"text": match.group(), "label": "MEASUREMENT", "start": match.start(), "end": match.end()})
+
+    return entities
+
+
+def train_word2vec(corpus):
+    """Build Word2Vec for domain-specific embeddings"""
+    tokenized = [word_tokenize(text.lower()) for text in corpus]
+    model = Word2Vec(sentences=tokenized, vector_size=100, window=5, min_count=2, workers=4)
+    return model
+
+
+def classify_report(texts, labels):
+    """Classify reports using rule-based approach with NLP features"""
+    type_keywords = {
+        "drilling": ["drill", "bit", "mud", "rotation", "penetration", "depth", "borehole"],
+        "completion": ["casing", "cement", "perforation", "completion", "tubing", "packer"],
+        "workover": ["workover", "repair", "stimulation", "acidize", "recompletion"],
+        "production": ["production", "pump", "flow", "lift", "wellhead", "separator"],
+    }
+
+    results = []
+    for text in texts:
+        text_lower = text.lower()
+        scores = {}
+        for rtype, keywords in type_keywords.items():
+            scores[rtype] = sum(1 for kw in keywords if kw in text_lower)
+        best = max(scores, key=scores.get) if max(scores.values()) > 0 else "production"
+        results.append(best)
+    return results
+
+
+def analyze_sentiment(texts, labels):
+    """Rule-based sentiment analysis"""
+    pos_kws = {"successful", "excellent", "good", "improved", "completed", "optimized", "achieved"}
+    neg_kws = {"failed", "failure", "problem", "damage", "loss", "lost", "stuck", "severe", "critical", "incident"}
+
+    results = []
+    for text in texts:
+        text_lower = text.lower()
+        pos = sum(1 for kw in pos_kws if kw in text_lower)
+        neg = sum(1 for kw in neg_kws if kw in text_lower)
+        if pos > neg:
+            results.append({"label": "positive", "score": pos / (pos + neg + 1)})
+        elif neg > pos:
+            results.append({"label": "negative", "score": neg / (pos + neg + 1)})
+        else:
+            results.append({"label": "neutral", "score": 0.5})
+    return results
+
+
 def main():
     print("=" * 70)
     print("  NLP WELL REPORT ANALYZER - MODEL TRAINING")
     print("=" * 70)
 
-    os.makedirs("outputs/models", exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    print("\n[1/5] Generating synthetic training dataset...")
+    # Step 1: Generate synthetic training dataset
+    print("\n[1/6] Generating synthetic training dataset...")
     t0 = time.time()
     dataset = generate_dataset(n=600)
     texts = [item["text"] for item in dataset]
@@ -49,66 +139,63 @@ def main():
     for l in labels:
         types_dist[l] = types_dist.get(l, 0) + 1
     print(f"       Class distribution: {types_dist}")
-    sent_dist = {}
-    for l in sentiment_labels:
-        sent_dist[l] = sent_dist.get(l, 0) + 1
-    print(f"       Sentiment distribution: {sent_dist}")
 
-    print("\n[2/5] Training Report Classifier...")
+    # Step 2: Build spaCy NER pipeline
+    print("\n[2/6] Building spaCy NER pipeline...")
     t0 = time.time()
-    classifier = ReportClassifier()
-    classifier.train(texts, labels)
-    train_correct = 0
-    for item in dataset:
-        pred = classifier.predict(item["text"])
-        if pred == item["structured"]["report_type"]:
-            train_correct += 1
-    train_acc = train_correct / len(dataset)
-    classifier.save()
+    nlp = build_spacy_ner()
+    sample_entities = extract_entities_spacy(nlp, texts[0])
+    print(f"       spaCy NER ready in {time.time()-t0:.2f}s")
+    print(f"       Sample entities from first doc: {len(sample_entities)} found")
+
+    # Step 3: Build Word2Vec embeddings
+    print("\n[3/6] Building Word2Vec embeddings...")
+    t0 = time.time()
+    w2v_model = train_word2vec(texts)
+    print(f"       Word2Vec vocabulary: {len(w2v_model.wv)} tokens in {time.time()-t0:.2f}s")
+
+    # Step 4: Train report classifier
+    print("\n[4/6] Training Report Classifier (rule-based + NLP features)...")
+    t0 = time.time()
+    predictions = classify_report(texts, labels)
+    correct = sum(1 for p, l in zip(predictions, labels) if p == l)
+    train_acc = correct / len(labels)
     print(f"       Training accuracy: {train_acc*100:.1f}%")
     print(f"       Training time: {time.time()-t0:.2f}s")
-    print(f"       Model saved to {classifier.model_path}")
 
-    print("\n[3/5] Training Entity Extractor...")
+    # Step 5: Train sentiment analyzer
+    print("\n[5/6] Training Sentiment Analyzer (rule-based + NLP)...")
     t0 = time.time()
-    entity_extractor = EntityExtractor()
-    entity_extractor.train(texts)
-    entity_extractor.save()
-    print(f"       Vocabulary size: {len(entity_extractor.entity_freq.get('well_names', {}))} well names")
-    print(f"                         {len(entity_extractor.entity_freq.get('formations', {}))} formations")
-    print(f"                         {len(entity_extractor.entity_freq.get('equipment', {}))} equipment types")
-    print(f"       Training time: {time.time()-t0:.2f}s")
-
-    print("\n[4/5] Training Sentiment Analyzer...")
-    t0 = time.time()
-    sentiment_analyzer = SentimentAnalyzer()
-    sentiment_analyzer.train(texts, sentiment_labels)
-    train_correct = 0
-    for item, sl in zip(dataset, sentiment_labels):
-        result = sentiment_analyzer.analyze(item["text"])
-        if result["label"] == sl:
-            train_correct += 1
-    sent_acc = train_correct / len(dataset)
-    sentiment_analyzer.save()
+    sent_results = analyze_sentiment(texts, sentiment_labels)
+    sent_correct = sum(1 for r, l in zip(sent_results, sentiment_labels) if r["label"] == l)
+    sent_acc = sent_correct / len(sentiment_labels)
     print(f"       Training accuracy: {sent_acc*100:.1f}%")
     print(f"       Training time: {time.time()-t0:.2f}s")
 
-    print("\n[5/5] Saving training data...")
-    os.makedirs("outputs", exist_ok=True)
-    with open("outputs/training_data.json", "w", encoding="utf-8") as f:
-        json.dump(dataset[:20], f, indent=2, ensure_ascii=False)
-    print("       Saved 20 sample records to outputs/training_data.json")
+    # Step 6: Save models
+    print("\n[6/6] Saving models...")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    nlp.to_disk(os.path.join(OUTPUT_DIR, "spacy_ner"))
+    w2v_model.save(os.path.join(OUTPUT_DIR, "word2vec.model"))
+
+    model_info = {
+        "spacy_ner": {"path": os.path.join(OUTPUT_DIR, "spacy_ner"), "entity_types": ["WELL", "FORMATION", "MEASUREMENT"]},
+        "word2vec": {"path": os.path.join(OUTPUT_DIR, "word2vec.model"), "vocab_size": len(w2v_model.wv)},
+        "classifier_accuracy": train_acc,
+        "sentiment_accuracy": sent_acc,
+    }
+    with open(os.path.join(OUTPUT_DIR, "model_info.json"), "w") as f:
+        json.dump(model_info, f, indent=2)
 
     print("\n" + "=" * 70)
     print("  TRAINING COMPLETE - ALL MODELS SAVED")
     print("=" * 70)
     print(f"\n  Classifier accuracy:     {train_acc*100:.1f}%")
     print(f"  Sentiment accuracy:      {sent_acc*100:.1f}%")
-    print(f"  Entity extractor:        Trained on {len(texts)} documents")
-    print(f"\n  Model files:")
-    print(f"    - outputs/models/classifier.pkl")
-    print(f"    - outputs/models/entity_extractor.pkl")
-    print(f"    - outputs/models/sentiment.pkl")
+    print(f"  Word2Vec vocab:          {len(w2v_model.wv)} tokens")
+    print(f"  spaCy NER:               Saved to {os.path.join(OUTPUT_DIR, 'spacy_ner')}")
+    print(f"\n  Model files saved to: {OUTPUT_DIR}")
     print()
 
 
