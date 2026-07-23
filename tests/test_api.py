@@ -21,8 +21,8 @@ def test_models(client):
     assert response.status_code == 200
     data = response.json()
     assert "classifier" in data
-    assert "entity_extractor" in data
-    assert "sentiment_analyzer" in data
+    assert "spacy_ner" in data
+    assert "sentiment" in data
 
 
 def test_analyze_valid(client):
