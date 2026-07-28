@@ -27,9 +27,14 @@ ENV/
 env.bak/
 venv.bak/
 *.pkl
-outputs/
+outputs/*
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+
+# Streamlit Cloud model files
+!outputs/models/
+!outputs/models/*.pkl
+
