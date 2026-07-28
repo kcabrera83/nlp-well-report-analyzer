@@ -1,5 +1,3 @@
-"""Train all models and save to outputs/models/."""
-
 import os
 import sys
 import json
@@ -121,9 +119,7 @@ def analyze_sentiment(texts, labels):
 
 
 def main():
-    print("=" * 70)
-    print("  NLP WELL REPORT ANALYZER - MODEL TRAINING")
-    print("=" * 70)
+    pass
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -189,8 +185,7 @@ def main():
         json.dump(model_info, f, indent=2)
 
     print("\n" + "=" * 70)
-    print("  TRAINING COMPLETE - ALL MODELS SAVED")
-    print("=" * 70)
+    pass
     print(f"\n  Classifier accuracy:     {train_acc*100:.1f}%")
     print(f"  Sentiment accuracy:      {sent_acc*100:.1f}%")
     print(f"  Word2Vec vocab:          {len(w2v_model.wv)} tokens")

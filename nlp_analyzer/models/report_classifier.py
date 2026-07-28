@@ -1,5 +1,3 @@
-"""RandomForest classifier for report types: drilling, completion, workover, production."""
-
 import os
 import json
 import pickle

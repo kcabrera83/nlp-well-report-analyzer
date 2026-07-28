@@ -1,5 +1,3 @@
-"""FastAPI application for NLP Well Report Analyzer."""
-
 import os
 import json
 import re
@@ -17,7 +15,7 @@ from gensim.models import Word2Vec
 app = FastAPI(
     title="NLP Well Report Analyzer",
     description="NLP analysis of well reports for Oil & Gas",
-    version="2.0.0",
+    version="0.1",
 )
 
 app.add_middleware(

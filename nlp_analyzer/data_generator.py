@@ -1,5 +1,3 @@
-"""Generate synthetic well report text data with structured fields."""
-
 import random
 import json
 

@@ -1,5 +1,3 @@
-"""Tokenization, TF-IDF, keyword extraction, and simple rule-based NER."""
-
 import re
 import math
 from collections import Counter

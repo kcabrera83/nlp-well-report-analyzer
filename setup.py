@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="nlp-well-report-analyzer",
-    version="1.0.0",
+    version="0.1",
     author="Ing. Kelvin Cabrera",
     description="NLP system for analyzing well completion reports and extracting structured information",
     packages=find_packages(),

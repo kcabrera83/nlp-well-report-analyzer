@@ -1,5 +1,3 @@
-"""Rule-based + ML entity extraction for well reports."""
-
 import os
 import re
 import pickle

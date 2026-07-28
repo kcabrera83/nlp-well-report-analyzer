@@ -1,5 +1,3 @@
-"""API tests for NLP Well Report Analyzer."""
-
 import sys
 import json
 import time
@@ -41,9 +39,7 @@ SAMPLE_COMPLETION = "Completion report for well Pemex-A1 at depth 9800 ft in Ku-
 
 def main():
     global PASS, FAIL
-    print("=" * 60)
-    print("  NLP WELL REPORT ANALYZER - API TESTS")
-    print("=" * 60)
+    pass
 
     print("\n--- Health Check ---")
     test("GET /api/health", "GET", "/api/health")
@@ -87,7 +83,6 @@ def main():
     print("\n" + "=" * 60)
     total = PASS + FAIL
     print(f"  RESULTS: {PASS}/{total} passed, {FAIL} failed")
-    print("=" * 60)
     return FAIL == 0
 
 

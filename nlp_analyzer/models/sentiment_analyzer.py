@@ -1,5 +1,3 @@
-"""Sentiment analysis for report tone: positive, negative, neutral."""
-
 import os
 import pickle
 from collections import Counter
