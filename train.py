@@ -16,7 +16,7 @@ OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs",
 
 WELL_PATTERN = re.compile(r"[A-Z]-\d+")
 FORMATION_WORDS = {"Sandstone", "Limestone", "Shale", "Dolomite"}
-MEASUREMENT_PATTERN = re.compile(r"\d+\s*(bbl|psi|ft|md|°F)")
+MEASUREMENT_PATTERN = re.compile(r"\d+\s*(bbl|psi|ft|md|Â°F)")
 
 
 def generate_sentiment_labels(dataset):
@@ -51,7 +51,7 @@ def build_spacy_ner():
         patterns = [
             {"label": "WELL", "pattern": [{"TEXT": {"REGEX": "^[A-Z]-\\d+$"}}]},
             {"label": "FORMATION", "pattern": [{"TEXT": {"IN": list(FORMATION_WORDS)}}]},
-            {"label": "MEASUREMENT", "pattern": [{"TEXT": {"REGEX": "\\d+\\s*(bbl|psi|ft|md|°F)"}}]},
+            {"label": "MEASUREMENT", "pattern": [{"TEXT": {"REGEX": "\\d+\\s*(bbl|psi|ft|md|Â°F)"}}]},
         ]
         ruler.add_patterns(patterns)
     return nlp
@@ -194,5 +194,5 @@ def main():
     print()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

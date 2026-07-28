@@ -32,7 +32,7 @@ OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs",
 
 WELL_PATTERN = re.compile(r"[A-Z]-\d+")
 FORMATION_WORDS = {"Sandstone", "Limestone", "Shale", "Dolomite"}
-MEASUREMENT_PATTERN = re.compile(r"\d+\s*(bbl|psi|ft|md|°F)")
+MEASUREMENT_PATTERN = re.compile(r"\d+\s*(bbl|psi|ft|md|Â°F)")
 
 TYPE_KEYWORDS = {
     "drilling": ["drill", "bit", "mud", "rotation", "penetration", "depth", "borehole"],
@@ -246,6 +246,6 @@ async def api_docs():
     }
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5017)
