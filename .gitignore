@@ -38,3 +38,6 @@ outputs/*
 !outputs/models/
 !outputs/models/*.pkl
 
+
+# Security & MLflow
+mlflow.db

@@ -1,32 +1,46 @@
-import streamlit as st, joblib, numpy as np
-from pathlib import Path; import sys; sys.path.insert(0, str(Path(__file__).parent))
 
-st.set_page_config(page_title="Report Analyzer", page_icon="\U0001f4ca")
-st.header("Report Analyzer")
+import streamlit as st
+import numpy as np
+import joblib, os
+import matplotlib.pyplot as plt
 
-p = Path(__file__).parent / 'outputs' / 'models'
-models = {'type': joblib.load(p / 'report_classifier.pkl'), 'sentiment': joblib.load(p / 'sentiment_model.pkl')}
+st.set_page_config(page_title="NLP Well Report Analyzer", layout="wide")
+st.title(":microscope: NLP Well Report Analyzer")
+st.caption("Information extraction from unstructured drilling and completion reports")
 
-with st.sidebar:
-    length = st.slider('Length', 0, 10000, 5000)
-    run = st.button('Analyze', use_container_width=True)
+models = {}
+for f in os.listdir("outputs/models"):
+    if f.endswith(".pkl"):
+        models[f.replace(".pkl", "")] = joblib.load(os.path.join("outputs/models", f))
 
-if run:
-    x = np.array([[length]])
-    st.divider()
-    m = models['type']
-    if isinstance(m, dict):
-        X = m['scaler'].transform(x)
-        p = m['model'].predict(X)
-        v = m['label_encoder'].inverse_transform(p)[0] if 'label_encoder' in m else f'{p[0]:.2f}'
-    else:
-        v = f'{m.predict(x)[0]:.2f}'
-    st.metric('Type', v)
-    m = models['sentiment']
-    if isinstance(m, dict):
-        X = m['scaler'].transform(x)
-        p = m['model'].predict(X)
-        v = m['label_encoder'].inverse_transform(p)[0] if 'label_encoder' in m else f'{p[0]:.2f}'
-    else:
-        v = f'{m.predict(x)[0]:.2f}'
-    st.metric('Sentiment', v)
+view = st.sidebar.radio("View", ["Inference", "Model Analysis", "Data Explorer"])
+
+if view == "Inference":
+    sel = st.selectbox("Model", list(models.keys()))
+    m = models[sel]
+    feats = m.get("feature_names", [f"x{i}" for i in range(4)])
+    cols = st.columns(2)
+    inp = [cols[i%2].number_input(f, value=0.0) for i, f in enumerate(feats)]
+    if st.button("Infer"):
+        X = np.array(inp).reshape(1, -1)
+        if m.get("scaler"):
+            X = m["scaler"].transform(X)
+        pred = m["model"].predict(X)[0]
+        st.metric("Result", f"{pred:.3f}")
+
+elif view == "Model Analysis":
+    sel = st.selectbox("Model", list(models.keys()))
+    m = models[sel]
+    st.json({k: str(type(v)) for k, v in m.items() if k != "model"})
+    st.write("Model type:", type(m["model"]).__name__)
+    if hasattr(m["model"], "feature_importances_"):
+        fig, ax = plt.subplots()
+        ax.bar(range(len(m["model"].feature_importances_)), m["model"].feature_importances_)
+        st.pyplot(fig)
+
+elif view == "Data Explorer":
+    n = st.slider("Samples", 10, 1000, 100)
+    X = np.random.randn(n, 4)
+    fig, ax = plt.subplots()
+    ax.plot(X)
+    st.pyplot(fig)
